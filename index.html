@@ -1099,6 +1099,10 @@ function extractTransactions(allItems) {
       lastTxY = lineY;
       lastTxPage = linePage;
 
+      // If we already have amount on this line, this tx is complete — mark it so
+      // continuation lines won't append to it
+      current._complete = (debit > 0 || credit > 0);
+
     } else if (current) {
       const pageDiff = linePage - lastTxPage;
       const yGap = pageDiff === 0 ? lineY - lastTxY : 0;
@@ -1106,15 +1110,28 @@ function extractTransactions(allItems) {
       if (yGap > 350 && pageDiff === 0) continue;
       if (pageDiff > 1) continue;
 
+      // If the transaction already has its amount, only allow continuation if
+      // the line is purely descriptive text (no ref, no amount) AND within 2 lines
       const hasRef = line.some(i => /^[0-9A-Za-z]{10,20}$/.test(i.text.trim()) && !i.text.includes(' ') && Math.abs(i.x - colBounds.ref) < tol + 10);
       const hasAmt = line.some(i => numRe.test(i.text.replace(/,/g,'')) && i.x > colBounds.ref + 10);
       const hasDescText = line.some(i => i.x >= colBounds.desc - 15 && i.x < colBounds.ref - 5 && !numRe.test(i.text.replace(/,/g,'')) && i.text.trim().length > 1);
+
+      // Skip lines that look like a new transaction row (have ref + amount but no desc)
       if (hasRef && hasAmt && !hasDescText) continue;
+
+      // If tx is already complete (has amount) and this line has an amount too,
+      // it's a new transaction row without a date — push current and skip
+      if (current._complete && hasAmt) continue;
+
+      // Only append description text if within tight Y gap (same visual row)
+      if (current._complete && yGap > 20) continue;
 
       for (const item of line) {
         const t = item.text.trim();
         const x = item.x;
         if (!t || skipRe.test(t)) continue;
+        // Skip account number lines
+        if (/^0\d{9,11}$/.test(t)) continue;
 
         if (numRe.test(t.replace(/,/g, '')) && x >= colBounds.ref + 10) {
           const val = parseFloat(t.replace(/,/g, ''));
@@ -1122,10 +1139,10 @@ function extractTransactions(allItems) {
           const cDist = Math.abs(x - colBounds.credit);
           const bDist = colBounds.balance ? Math.abs(x - colBounds.balance) : 9999;
           if (bDist < Math.min(dDist, cDist)) continue;
-          if (dDist < cDist && dDist < tol && current.debit === 0) { current.debit = val; }
-          else if (cDist <= dDist && cDist < tol && current.credit === 0) { current.credit = val; }
+          if (dDist < cDist && dDist < tol && current.debit === 0) { current.debit = val; current._complete = true; }
+          else if (cDist <= dDist && cDist < tol && current.credit === 0) { current.credit = val; current._complete = true; }
         } else if (x >= colBounds.desc - 15 && x <= colBounds.ref + tol && !/^\d{12}$/.test(t)) {
-          current.description += ' ' + t;
+          if (!current._complete) current.description += ' ' + t;
         }
       }
     }
