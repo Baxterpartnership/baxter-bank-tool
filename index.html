@@ -808,8 +808,8 @@ const CATEGORY_RULES = [
   { pattern: /internal transfer|self transfer|own account transfer/i, cat: 'Transfer' },
   // General refunds
   { pattern: /refund/i, cat: 'Refund' },
-  // Visa purchase fallback
-  { pattern: /visa purchase/i, cat: 'Uncategorized' },
+  // Visa purchases — personal spend on business card = Owner's Drawings
+  { pattern: /visa purchase/i, cat: "Owner's Drawings" },
 ];
 
 function autoCategory(desc, isCredit) {
