@@ -988,7 +988,17 @@ async function parsePDF(arrayBuffer, password) {
   }
 
   setProgress(85);
+  // Debug: log raw allItems around the first few transactions
+  console.log('=== RAW ITEMS (first 80) ===');
+  allItems.slice(0,80).forEach(i => {
+    console.log(`p${i.page} x=${i.x} y=${i.y} | ${i.text}`);
+  });
   transactions = extractTransactions(allItems);
+  // Debug: log first 10 transactions raw
+  console.log('=== PARSED TRANSACTIONS ===');
+  transactions.slice(0,10).forEach((t,i) => {
+    console.log(i, t.date, '|', t.description, '|', t.reference, '| D:', t.debit, 'C:', t.credit);
+  });
   setProgress(100);
 
   setTimeout(() => {
