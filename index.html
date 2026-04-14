@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baxter | Bank Import Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --danger: #ff4d6d;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --debit: #ff4d6d;
+    --credit: #00d4aa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  .app { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--accent); }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 100px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .status-dot.connected { background: var(--credit); box-shadow: 0 0 6px var(--credit); }
+
+  /* Steps */
+  .steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+    margin-bottom: 40px;
+  }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .step:first-child { border-radius: 12px 0 0 12px; }
+  .step:last-child { border-radius: 0 12px 12px 0; }
+
+  .step.active {
+    background: var(--surface2);
+    border-color: var(--accent);
+  }
+  .step.done { border-color: var(--credit); }
+  .step.active::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .step.done::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--credit);
+  }
+
+  .step-num {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .step-label {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .step.active .step-label { color: var(--accent); }
+  .step.done .step-label { color: var(--credit); }
+
+  /* Panels */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+    display: none;
+  }
+  .panel.active { display: block; }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .panel-sub {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 28px;
+    line-height: 1.6;
+  }
+
+  /* Settings form */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field.full { grid-column: 1 / -1; }
+
+  label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+  }
+
+  input, select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover { background: #7d75ff; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-success {
+    background: var(--credit);
+    color: #000;
+  }
+  .btn-success:hover { background: #00e8bb; transform: translateY(-1px); }
+  .btn-success:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-sm { padding: 7px 14px; font-size: 11px; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(108, 99, 255, 0.05);
+  }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 40px;
+    margin-bottom: 16px;
+  }
+  .drop-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .drop-sub { font-size: 12px; color: var(--muted); }
+
+  /* Password field overlay */
+  .password-section {
+    display: none;
+    margin-top: 20px;
+    padding: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    align-items: center;
+    gap: 12px;
+  }
+  .password-section.show { display: flex; }
+  .password-section label { white-space: nowrap; margin-bottom: 0; }
+  .password-section input { flex: 1; }
+
+  /* Progress */
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 100px;
+    overflow: hidden;
+    margin: 16px 0;
+    display: none;
+  }
+  .progress-bar.show { display: block; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 100px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* Transaction table */
+  .table-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .summary-pills {
+    display: flex;
+    gap: 8px;
+  }
+
+  .pill {
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 100px;
+    border: 1px solid;
+  }
+  .pill-total { border-color: var(--border); color: var(--muted); }
+  .pill-debit { border-color: var(--debit); color: var(--debit); background: rgba(255,77,109,0.08); }
+  .pill-credit { border-color: var(--credit); color: var(--credit); background: rgba(0,212,170,0.08); }
+
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(42,42,58,0.6);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: rgba(108,99,255,0.05); }
+  tbody tr:last-child { border-bottom: none; }
+
+  td {
+    padding: 11px 16px;
+    vertical-align: middle;
+  }
+
+  .td-date { color: var(--muted); white-space: nowrap; }
+  .td-desc { max-width: 280px; line-height: 1.4; }
+  .td-ref { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .td-amount { text-align: right; white-space: nowrap; font-weight: 500; }
+  .amount-debit { color: var(--debit); }
+  .amount-credit { color: var(--credit); }
+
+  .td-cat select {
+    padding: 5px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    min-width: 140px;
+  }
+
+  .td-skip { text-align: center; }
+  .td-skip input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  tr.skipped { opacity: 0.3; }
+
+  /* Auth section */
+  .auth-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .auth-box h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  .auth-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* Results */
+  .result-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .result-ok { background: rgba(0,212,170,0.1); color: var(--credit); }
+  .result-err { background: rgba(255,77,109,0.1); color: var(--debit); }
+  .result-skip { background: var(--surface2); color: var(--muted); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 13px;
+    z-index: 999;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.3s;
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--credit); }
+  .toast.error { border-color: var(--debit); }
+
+  /* Nav actions */
+  .nav-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .info-note {
+    background: rgba(108,99,255,0.08);
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 16px;
+    line-height: 1.6;
+  }
+  .info-note strong { color: var(--accent); }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-state p { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="logo">BAXTER <span>//</span> BANK IMPORT <span style="font-size:10px;opacity:0.4;">v13</span></div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Not connected to QuickBooks</span>
+    </div>
+  </header>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="step active" id="step1">
+      <div class="step-num">Step 01</div>
+      <div class="step-label">Configure</div>
+    </div>
+    <div class="step" id="step2">
+      <div class="step-num">Step 02</div>
+      <div class="step-label">Review Transactions</div>
+    </div>
+    <div class="step" id="step3">
+      <div class="step-num">Step 03</div>
+      <div class="step-label">Push to QuickBooks</div>
+    </div>
+  </div>
+
+  <!-- PANEL 1: Configure -->
+  <div class="panel active" id="panel1">
+    <div class="panel-title">Configuration</div>
+    <div class="panel-sub">Enter your QuickBooks API credentials and PDF password. These are saved locally in your browser and never transmitted anywhere except directly to QuickBooks.</div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>QuickBooks Client ID</label>
+        <input type="password" id="clientId" placeholder="ABUKcIqo4MJ..." />
+      </div>
+      <div class="field">
+        <label>QuickBooks Client Secret</label>
+        <input type="password" id="clientSecret" placeholder="iTYpB48Cg8OT..." />
+      </div>
+      <div class="field">
+        <label>Realm ID (Company ID)</label>
+        <input type="text" id="realmId" placeholder="Found in your QBO URL" value="9341456866762194" />
+      </div>
+      <div class="field">
+        <label>Environment</label>
+        <select id="environment">
+          <option value="sandbox">Sandbox (Testing)</option>
+          <option value="production" selected>Production (Live)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>PDF Password (saved locally)</label>
+        <input type="password" id="pdfPassword" placeholder="Your Mashreq statement password" />
+      </div>
+      <div class="field">
+        <label>Default Bank Account Name in QBO</label>
+        <input type="text" id="bankAccountName" placeholder="e.g. Mashreq Business AED" value="Mashreq Business AED" />
+      </div>
+    </div>
+
+    <div class="info-note">
+      <strong>Where to find your Realm ID:</strong> Log into QuickBooks Online → look at the URL, it will contain <code>?company=XXXXXXXXX</code> — that number is your Realm ID.
+    </div>
+
+    <div class="nav-actions">
+      <button class="btn btn-primary" onclick="saveSettings()">Save & Continue →</button>
+    </div>
+  </div>
+
+  <!-- PANEL 2: Upload & Review -->
+  <div class="panel" id="panel2">
+    <div class="panel-title">Upload Statement</div>
+    <div class="panel-sub">Drop your Mashreq PDF statement below. The tool will extract all transactions automatically.</div>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf" onchange="handleFile(this.files[0])">
+      <div class="drop-icon">📄</div>
+      <div class="drop-title" id="dropTitle">Drop PDF here or click to select</div>
+      <div class="drop-sub" id="dropSub">Mashreq Bank statement (.pdf)</div>
+    </div>
+
+    <div class="password-section" id="passwordSection">
+      <label>PDF Password:</label>
+      <input type="password" id="pdfPasswordInput" placeholder="Enter if not pre-saved">
+      <button class="btn btn-outline btn-sm" onclick="processWithPassword()">Unlock & Parse</button>
+    </div>
+
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <div id="tableSection" style="display:none; margin-top:28px;">
+      <div class="table-controls">
+        <div class="summary-pills">
+          <span class="pill pill-total" id="pillTotal">0 transactions</span>
+          <span class="pill pill-credit" id="pillCredit">Credits: AED 0</span>
+          <span class="pill pill-debit" id="pillDebit">Debits: AED 0</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="selectAll()">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselectAll()">Deselect All</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Skip</th>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Reference</th>
+              <th style="text-align:right;">Amount</th>
+              <th>Type</th>
+              <th>Category</th>
+            </tr>
+          </thead>
+          <tbody id="txTable"></tbody>
+        </table>
+      </div>
+
+      <div class="nav-actions">
+        <button class="btn btn-primary" onclick="goToStep3()">Connect QuickBooks & Review →</button>
+        <button class="btn btn-outline" onclick="goToStep1()">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL 3: Push to QBO -->
+  <div class="panel" id="panel3">
+    <div class="panel-title">Push to QuickBooks</div>
+    <div class="panel-sub">Connect your QuickBooks account and push the transactions.</div>
+
+    <div class="auth-box">
+      <h3>QuickBooks Authorization</h3>
+      <div class="auth-status" id="authStatus">
+        <div class="status-dot" id="authDot"></div>
+        <span id="authStatusText">Not authorized — connect below</span>
+      </div>
+      <div class="nav-actions" style="margin-top:16px;">
+        <button class="btn btn-outline btn-sm" onclick="startOAuth()">🔗 Connect QuickBooks</button>
+        <button class="btn btn-outline btn-sm" onclick="checkAuth()">↻ Check Connection</button>
+      </div>
+      <div class="info-note" style="margin-top:16px;">
+        Clicking Connect will open a QuickBooks authorization window. Sign in and approve access.<br><br>
+        <strong>Alternative — paste token manually:</strong> Use the <a href="https://developer.intuit.com/app/developer/playground" target="_blank" style="color:var(--accent)">OAuth Playground</a> to get an access token, then paste it below.
+      </div>
+    </div>
+
+    <div class="auth-box" style="margin-top:16px;">
+      <h3>Manual Token (Alternative)</h3>
+      <div class="form-grid" style="margin-bottom:12px;">
+        <div class="field full">
+          <label>Access Token from OAuth Playground</label>
+          <input type="password" id="manualToken" placeholder="eyJlbmMiOiJBMTI4Q0JDLUhTMjU2Ii..." />
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="saveManualToken()">Save Token</button>
+      <div class="info-note" style="margin-top:12px;">
+        Go to <a href="https://developer.intuit.com/app/developer/playground" target="_blank" style="color:var(--accent)">developer.intuit.com/app/developer/playground</a> → select your app → get token → copy the Access Token and paste it above.
+      </div>
+    </div>
+
+    <div id="authCodeSection" style="display:none; margin-bottom:16px;">
+      <div class="auth-box">
+        <h3>Paste Authorization Code</h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">After approving in QuickBooks, you'll land on the Intuit playground page. Copy the <strong>code=</strong> value from the URL bar and paste it here, then click Exchange.</p>
+        <div class="form-grid" style="margin-bottom:12px;">
+          <div class="field full">
+            <label>Authorization Code</label>
+            <input type="text" id="authCodeInput" placeholder="XAB1177..." />
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="submitAuthCode()">Exchange for Token</button>
+      </div>
+    </div>
+
+    <!-- Account mapping section -->
+    <div id="accountMappingSection" style="display:none; margin-bottom:16px;">
+      <div class="auth-box">
+        <h3>Account Mapping</h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">Select which QBO accounts to use for bank, expenses, and income. Click <strong>Load Accounts</strong> to fetch your Chart of Accounts.</p>
+        <button class="btn btn-outline btn-sm" onclick="loadAccountsForMapping()" id="loadAccountsBtn">🔍 Load Accounts from QBO</button>
+        <div id="mappingFields" style="display:none; margin-top:16px;">
+          <div class="form-grid">
+            <div class="field full">
+              <label>Bank Account (for purchases & deposits)</label>
+              <select id="mapBankAccount"></select>
+            </div>
+          </div>
+
+          <div style="margin-top:20px; margin-bottom:8px; font-family:'Syne',sans-serif; font-weight:600; font-size:13px; color:var(--accent);">Expense Category Mapping</div>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:12px;">Assign each transaction category to a specific QBO expense account. Unmapped categories will use the fallback.</p>
+          <div class="form-grid" id="categoryMappingGrid"></div>
+
+          <div style="margin-top:20px; margin-bottom:8px; font-family:'Syne',sans-serif; font-weight:600; font-size:13px; color:var(--accent);">Income Category Mapping</div>
+          <div class="form-grid" id="incomeMappingGrid"></div>
+
+          <button class="btn btn-primary btn-sm" onclick="saveAccountMapping()" style="margin-top:16px;">Save Mapping</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pushSection" style="display:none;">
+      <div style="margin-bottom:16px;">
+        <button class="btn btn-outline btn-sm" onclick="queryAccounts()">🔍 Query QBO Accounts</button>
+        <div id="accountsList" style="display:none; margin-top:12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); max-height:200px; overflow-y:auto; white-space:pre;"></div>
+      </div>
+      <div class="table-controls">
+        <span style="font-family:'Syne',sans-serif; font-weight:600; font-size:14px;">Ready to push</span>
+        <span class="pill pill-total" id="pushCount">0 transactions selected</span>
+      </div>
+      <button class="btn btn-success" id="pushBtn" onclick="pushToQBO()">
+        Push Transactions to QuickBooks
+      </button>
+    </div>
+
+    <div id="resultsSection" style="display:none; margin-top:24px;">
+      <div style="font-family:'Syne',sans-serif; font-weight:600; font-size:14px; margin-bottom:16px;">Results</div>
+      <div id="resultsList"></div>
+      <div class="nav-actions">
+        <button class="btn btn-outline" onclick="resetTool()">↺ Import Another Statement</button>
+      </div>
+    </div>
+
+    <!-- Bulk Delete Utility -->
+    <div class="auth-box" style="margin-top:16px;">
+      <h3>🗑 Bulk Delete from QBO</h3>
+      <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">Query and delete all purchases and deposits from QBO within a date range. Use this to clean up old imports.</p>
+      <div class="form-grid" style="margin-bottom:12px;">
+        <div class="field">
+          <label>From Date</label>
+          <input type="date" id="deleteFromDate" value="2024-01-01" />
+        </div>
+        <div class="field">
+          <label>To Date</label>
+          <input type="date" id="deleteToDate" value="2024-12-31" />
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-outline btn-sm" onclick="queryForDelete()">🔍 Find Transactions</button>
+        <button class="btn btn-outline btn-sm" id="bulkDeleteBtn" onclick="bulkDeleteFromQBO()" style="border-color:var(--debit); color:var(--debit); display:none;">🗑 Delete All Found</button>
+      </div>
+      <div id="deletePreview" style="display:none; margin-top:12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); max-height:200px; overflow-y:auto;"></div>
+    </div>
+
+    <div class="nav-actions" style="margin-top:8px;">
+      <button class="btn btn-outline" onclick="goToStep2()">← Back to Transactions</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── PDF.js setup ───────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─── State ───────────────────────────────────────────────────
+let transactions = [];
+let pushedTransactions = []; // tracks QBO IDs for delete
+let accessToken = null;
+let realmId = null;
+let settings = {};
+let qboAccounts = []; // fetched from QBO
+let accountMapping = null; // { bankId, bankName, categoryMap: { catName: { id, name } }, incomeMap: { catName: { id, name } } }
+
+const QBO_CATEGORIES = [
+  'Uncategorized',
+  'Bank Charges & Fees',
+  'Bank Fee Refund',
+  'Office & Admin',
+  'Software & Subscriptions',
+  'Travel & Transport',
+  'Meals & Entertainment',
+  'Utilities',
+  'Marketing & Advertising',
+  'Professional Services',
+  'Recruitment / Placement Fees',
+  'Salary & Wages',
+  'Tax Payments',
+  'Transfer',
+  'Owner\'s Contributions',
+  'Owner\'s Drawings',
+  'Client Payment',
+  'Other Income',
+  'Refund',
+];
+
+// Auto-categorisation rules — order matters, first match wins
+const CATEGORY_RULES = [
+  // Bank fee refunds (credits from Mashreq) — must be before general VAT/refund rules
+  { pattern: /vat refund|fee refund|charge refund|refund.*fee|refund.*charge|reversal.*fee|fee.*reversal|bank.*refund/i, cat: 'Bank Fee Refund', creditOnly: true },
+  // Client payments / inward remittances
+  { pattern: /inward remittance|ipi payment|ipp transfer|incoming transfer|swift.*credit|telegraphic transfer/i, cat: 'Client Payment' },
+  // Owner contributions (personal to business)
+  { pattern: /own.*transfer|personal.*transfer|self.*transfer|owner.*deposit/i, cat: "Owner's Contributions" },
+  // Bank charges and fees
+  { pattern: /maintenance fee|monthly fee|relationship fee|service charge|bank fee|account fee|sms alert|card fee|annual fee|fbf fee|sme fee/i, cat: 'Bank Charges & Fees' },
+  { pattern: /atm withdrawal|cash withdrawal/i, cat: "Owner's Drawings" },
+  // VAT and tax payments
+  { pattern: /value added tax.*output|vat.*output|federal tax authority|fta payment|vat payment/i, cat: 'Tax Payments' },
+  // Salary
+  { pattern: /salary|payroll|wages|bomlaead/i, cat: 'Salary & Wages' },
+  // Travel and transport — exclude food delivery variants
+  { pattern: /uber(?! eats)|careem(?! food)|taxi|rta |salik|parking|airline|emirates air|flydubai|air arabia/i, cat: 'Travel & Transport' },
+  // Meals and entertainment
+  { pattern: /uber eats|careem food|deliveroo|talabat|zomato|restaurant|bistro|cafe|coffee|starbucks|costa|dining|catering/i, cat: 'Meals & Entertainment' },
+  // Software and subscriptions
+  { pattern: /netflix|spotify|linkedin|microsoft|google.*pay|apple\.com|adobe|zoom|dropbox|slack|github|aws|amazon web|godaddy|namecheap/i, cat: 'Software & Subscriptions' },
+  // Utilities
+  { pattern: /etisalat|du\b|e-life|dewa|sewa|addc|fewa|utility|telecom/i, cat: 'Utilities' },
+  // Marketing
+  { pattern: /google ads|meta ads|facebook ads|instagram|marketing|advertising|promotion/i, cat: 'Marketing & Advertising' },
+  // Professional services
+  { pattern: /legal|lawyer|solicitor|audit|accountant|consultancy|consulting/i, cat: 'Professional Services' },
+  // Office and admin
+  { pattern: /trade license|business license|amer|tasheel|notary|typing|printing|stationery|courier|fedex|dhl|aramex/i, cat: 'Office & Admin' },
+  // Amazon shopping maps to office by default
+  { pattern: /amazon(?!.*web)|amzn/i, cat: 'Office & Admin' },
+  // Transfers — only internal/own-account moves, not outward payments
+  { pattern: /^transfer\s*-?\s*$/i, cat: 'Transfer' },
+  { pattern: /internal transfer|self transfer|own account transfer/i, cat: 'Transfer' },
+  // General refunds
+  { pattern: /refund/i, cat: 'Refund' },
+  // Visa purchase fallback
+  { pattern: /visa purchase/i, cat: 'Uncategorized' },
+];
+
+function autoCategory(desc, isCredit) {
+  for (const rule of CATEGORY_RULES) {
+    if (rule.creditOnly && !isCredit) continue;
+    if (rule.pattern.test(desc)) return rule.cat;
+  }
+  // Default: unmatched credits are likely client payments
+  if (isCredit) return 'Client Payment';
+  return 'Uncategorized';
+}
+
+// ─── Settings ────────────────────────────────────────────────
+function saveSettings() {
+  const clientId = document.getElementById('clientId').value.trim();
+  const clientSecret = document.getElementById('clientSecret').value.trim();
+  const realmIdVal = document.getElementById('realmId').value.trim();
+  const env = document.getElementById('environment').value;
+  const pdfPwd = document.getElementById('pdfPassword').value;
+  const bankAcct = document.getElementById('bankAccountName').value.trim();
+
+  if (!clientId || !clientSecret || !realmIdVal) {
+    showToast('Please fill in Client ID, Client Secret, and Realm ID', 'error');
+    return;
+  }
+
+  settings = { clientId, clientSecret, realmId: realmIdVal, env, pdfPwd, bankAcct };
+  localStorage.setItem('baxterSettings', JSON.stringify(settings));
+  realmId = realmIdVal;
+
+  showToast('Settings saved ✓', 'success');
+  goToStep2();
+}
+
+function loadSettings() {
+  const saved = localStorage.getItem('baxterSettings');
+  if (saved) {
+    settings = JSON.parse(saved);
+    document.getElementById('clientId').value = settings.clientId || '';
+    document.getElementById('clientSecret').value = settings.clientSecret || '';
+    document.getElementById('realmId').value = settings.realmId || '9341456866762194';
+    document.getElementById('environment').value = settings.env || 'production';
+    document.getElementById('pdfPassword').value = settings.pdfPwd || '';
+    document.getElementById('bankAccountName').value = settings.bankAcct || 'Mashreq Business AED';
+    realmId = settings.realmId;
+  }
+
+  // Load saved account mapping
+  const savedMapping = localStorage.getItem('baxterAccountMapping');
+  if (savedMapping) {
+    accountMapping = JSON.parse(savedMapping);
+    // Migrate old format (single expenseId/incomeId) to new per-category format
+    if (accountMapping.expenseId && !accountMapping.categoryMap) {
+      const oldExpense = { id: accountMapping.expenseId, name: accountMapping.expenseName };
+      const oldIncome = { id: accountMapping.incomeId, name: accountMapping.incomeName };
+      accountMapping.categoryMap = {};
+      accountMapping.incomeMap = {};
+      QBO_CATEGORIES.forEach(cat => {
+        if (["Client Payment", "Other Income", "Refund", "Owner's Contributions"].includes(cat)) {
+          accountMapping.incomeMap[cat] = oldIncome;
+        } else {
+          accountMapping.categoryMap[cat] = oldExpense;
+        }
+      });
+      localStorage.setItem('baxterAccountMapping', JSON.stringify(accountMapping));
+    }
+  }
+}
+
+// ─── Navigation ──────────────────────────────────────────────
+function goToStep1() {
+  setStep(1);
+}
+function goToStep2() {
+  setStep(2);
+}
+function goToStep3() {
+  if (transactions.filter(t => !t.skip).length === 0) {
+    showToast('No transactions selected to push', 'error');
+    return;
+  }
+  setStep(3);
+  updatePushCount();
+
+  // Show account mapping and push sections if connected
+  if (accessToken) {
+    document.getElementById('accountMappingSection').style.display = 'block';
+    document.getElementById('pushSection').style.display = 'block';
+  }
+}
+
+function setStep(n) {
+  [1,2,3].forEach(i => {
+    document.getElementById(`panel${i}`).classList.remove('active');
+    const s = document.getElementById(`step${i}`);
+    s.classList.remove('active', 'done');
+    if (i < n) s.classList.add('done');
+    if (i === n) s.classList.add('active');
+  });
+  document.getElementById(`panel${n}`).classList.add('active');
+}
+
+// ─── Drop Zone ───────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') handleFile(file);
+  else showToast('Please drop a PDF file', 'error');
+});
+
+async function handleFile(file) {
+  if (!file) return;
+  document.getElementById('dropTitle').textContent = file.name;
+  document.getElementById('dropSub').textContent = `${(file.size / 1024).toFixed(0)} KB — parsing...`;
+
+  const password = settings.pdfPwd || document.getElementById('pdfPasswordInput').value || '';
+
+  showProgress(true);
+  setProgress(10);
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    await parsePDF(arrayBuffer, password);
+  } catch (err) {
+    if (err.name === 'PasswordException' || (err.message && err.message.includes('password'))) {
+      document.getElementById('passwordSection').classList.add('show');
+      document.getElementById('pdfPasswordInput').focus();
+      showToast('PDF is password protected — enter password below', 'error');
+    } else {
+      showToast('Error reading PDF: ' + err.message, 'error');
+      console.error(err);
+    }
+    showProgress(false);
+  }
+}
+
+let pendingBuffer = null;
+async function processWithPassword() {
+  const pwd = document.getElementById('pdfPasswordInput').value;
+  if (pendingBuffer) {
+    await parsePDF(pendingBuffer, pwd);
+  }
+}
+
+// ─── PDF Parsing ─────────────────────────────────────────────
+async function parsePDF(arrayBuffer, password) {
+  pendingBuffer = arrayBuffer;
+  showProgress(true);
+  setProgress(20);
+
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, password: password || '' });
+  const pdf = await loadingTask.promise;
+
+  setProgress(40);
+
+  // Extract all items across all pages with their positions
+  const allItems = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1 });
+    const pageHeight = viewport.height;
+
+    for (const item of content.items) {
+      const text = item.str.trim();
+      if (!text) continue;
+      allItems.push({
+        text,
+        x: Math.round(item.transform[4]),
+        // Flip Y so top of page = small Y number
+        y: Math.round(pageHeight - item.transform[5]),
+        page: p
+      });
+    }
+    setProgress(40 + Math.round((p / pdf.numPages) * 40));
+  }
+
+  setProgress(85);
+  transactions = extractTransactions(allItems);
+  setProgress(100);
+
+  setTimeout(() => {
+    showProgress(false);
+    renderTable();
+    document.getElementById('tableSection').style.display = 'block';
+    document.getElementById('dropSub').textContent = `✓ ${transactions.length} transactions extracted`;
+    document.getElementById('passwordSection').classList.remove('show');
+  }, 400);
+}
+
+function extractTransactions(allItems) {
+  // ── Step 1: Group items into lines by (page, Y) ──────────────
+  const lineMap = {};
+  for (const item of allItems) {
+    const key = `${item.page}_${Math.round(item.y / 4) * 4}`;
+    if (!lineMap[key]) lineMap[key] = [];
+    lineMap[key].push(item);
+  }
+
+  const lines = Object.values(lineMap)
+    .map(items => items.sort((a, b) => a.x - b.x))
+    .sort((a, b) => {
+      if (a[0].page !== b[0].page) return a[0].page - b[0].page;
+      return a[0].y - b[0].y;
+    });
+
+  // ── Step 2: Detect column bounds from header row ─────────────
+  let colBounds = null;
+  for (const line of lines) {
+    const joined = line.map(i => i.text).join(' ').toLowerCase();
+    if (joined.includes('date') && joined.includes('transaction') && joined.includes('debit')) {
+      colBounds = {};
+      for (const item of line) {
+        const t = item.text.toLowerCase().trim();
+        if (t === 'date') colBounds.date = item.x;
+        if (t === 'transaction') colBounds.desc = item.x;
+        if (t === 'reference' || t === 'reference number') colBounds.ref = item.x;
+        if (t === 'debit') colBounds.debit = item.x;
+        if (t === 'credit') colBounds.credit = item.x;
+        if (t === 'balance') colBounds.balance = item.x;
+      }
+      break;
+    }
+  }
+  // Override with actual detected values from this statement format
+  colBounds = { date: 28, desc: 99, ref: 227, debit: 335, credit: 415, balance: 490 };
+  console.log('Detected column bounds:', colBounds);
+
+  const tol = 30;
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const numRe = /^[\d,]+(\.\d{1,2})?$/;
+
+  // Strict boilerplate — skip these lines entirely
+  const skipRe = /opening balance|closing balance|dear customer|it is the policy|account statement|statement for period|branch\s*:|^account number|^account currency|^iban|^customer number|^account type|the items and balance|report any discrepancies|all charges, terms|please note that|mashreqbank psc|regulated by the central|page \d+ of \d+|privacy policy|submit cancel|الرجاء التأكد|وفي حال اكتشاف|تاريخ طباعة|جميع الرسوم|يرجى ملاحظة/i;
+
+  const txs = [];
+  let current = null;
+  let lastTxY = -1;
+  let lastTxPage = -1;
+
+  for (const line of lines) {
+    const texts = line.map(i => i.text);
+    const joined = texts.join(' ');
+    const firstItem = line[0];
+    const lineY = firstItem.y;
+    const linePage = firstItem.page;
+
+    // Skip boilerplate and column headers
+    if (skipRe.test(joined)) continue;
+    if (/^(date|transaction|reference number|debit|credit|balance|التاريخ|المعاملة)$/i.test(joined.trim())) continue;
+    if (joined.toLowerCase().includes('date') && joined.toLowerCase().includes('debit') && joined.toLowerCase().includes('balance')) continue;
+
+    const isNewTx = dateRe.test(firstItem.text);
+
+    if (isNewTx) {
+      if (current && (current.debit > 0 || current.credit > 0)) {
+        txs.push(current);
+      }
+
+      let desc = '', ref = '', debit = 0, credit = 0;
+
+      for (const item of line) {
+        const t = item.text.trim();
+        const x = item.x;
+        if (!t || dateRe.test(t)) continue;
+
+        if (numRe.test(t.replace(/,/g, '')) && x >= colBounds.ref + 10) {
+          const val = parseFloat(t.replace(/,/g, ''));
+          const dDist = Math.abs(x - colBounds.debit);
+          const cDist = Math.abs(x - colBounds.credit);
+          const bDist = colBounds.balance ? Math.abs(x - colBounds.balance) : 9999;
+          if (bDist < Math.min(dDist, cDist)) continue;
+          if (dDist < cDist && dDist < tol) debit = val;
+          else if (cDist <= dDist && cDist < tol) credit = val;
+        } else if (/^[0-9A-Za-z]{10,20}$/.test(t) && !t.includes(' ') && Math.abs(x - colBounds.ref) < tol + 10) {
+          ref = t;
+        } else if (x >= colBounds.desc - 15 && x <= colBounds.ref + tol && !/^\d{12}$/.test(t)) {
+          desc += (desc ? ' ' : '') + t;
+        }
+      }
+
+      current = { date: firstItem.text, description: desc.trim(), reference: ref, debit, credit, skip: false, category: '' };
+      lastTxY = lineY;
+      lastTxPage = linePage;
+
+    } else if (current) {
+      const pageDiff = linePage - lastTxPage;
+      const yGap = pageDiff === 0 ? lineY - lastTxY : 0;
+
+      if (yGap > 350 && pageDiff === 0) continue;
+      if (pageDiff > 1) continue;
+
+      const hasRef = line.some(i => /^[0-9A-Za-z]{10,20}$/.test(i.text.trim()) && !i.text.includes(' ') && Math.abs(i.x - colBounds.ref) < tol + 10);
+      const hasAmt = line.some(i => numRe.test(i.text.replace(/,/g,'')) && i.x > colBounds.ref + 10);
+      const hasDescText = line.some(i => i.x >= colBounds.desc - 15 && i.x < colBounds.ref - 5 && !numRe.test(i.text.replace(/,/g,'')) && i.text.trim().length > 1);
+      if (hasRef && hasAmt && !hasDescText) continue;
+
+      for (const item of line) {
+        const t = item.text.trim();
+        const x = item.x;
+        if (!t || skipRe.test(t)) continue;
+
+        if (numRe.test(t.replace(/,/g, '')) && x >= colBounds.ref + 10) {
+          const val = parseFloat(t.replace(/,/g, ''));
+          const dDist = Math.abs(x - colBounds.debit);
+          const cDist = Math.abs(x - colBounds.credit);
+          const bDist = colBounds.balance ? Math.abs(x - colBounds.balance) : 9999;
+          if (bDist < Math.min(dDist, cDist)) continue;
+          if (dDist < cDist && dDist < tol && current.debit === 0) { current.debit = val; }
+          else if (cDist <= dDist && cDist < tol && current.credit === 0) { current.credit = val; }
+        } else if (x >= colBounds.desc - 15 && x <= colBounds.ref + tol && !/^\d{12}$/.test(t)) {
+          current.description += ' ' + t;
+        }
+      }
+    }
+  }
+
+  if (current && (current.debit > 0 || current.credit > 0)) txs.push(current);
+
+  // Clean up bleed-through from next transaction line or reference numbers in description
+  const bleedRe = /\s*(Visa Purchase\s*-\s*\d+.*|IPP TRANSFER\s*-\s*IPP.*|ATM Cash Withdrawal.*|Inward Remittance.*|Online.*Transfer.*|Funds Transfer.*)$/i;
+  // Remove 099REFEAED reference numbers that bleed into descriptions
+  const refBleedRe = /\s*099REFEAED\s*\d+\s*/gi;
+
+  return txs
+    .filter(t => (t.debit > 0 || t.credit > 0))
+    .map(t => {
+      let desc = t.description.replace(/\s+/g, ' ').replace(/[\s\-]+$/, '').trim();
+      // Remove reference number bleed (099REFEAED pattern)
+      desc = desc.replace(refBleedRe, ' ').trim();
+      desc = desc.replace(bleedRe, '').trim();
+
+      let fallback = t.reference || 'Transaction';
+      if (/^033IPPC|^033ICLB|^033IPI/i.test(t.reference)) fallback = 'IPP Transfer';
+      else if (/^033IPPD/i.test(t.reference)) fallback = 'IPP Transfer (Outward)';
+      else if (/^033DBLC|^033OIP/i.test(t.reference)) fallback = 'Local Fund Transfer';
+      else if (/^030POSB/i.test(t.reference)) fallback = 'Visa Purchase';
+      else if (/^099REFEAED/i.test(t.reference)) fallback = 'Bank Fee';
+      else if (/^006ATMF/i.test(t.reference)) fallback = 'ATM Withdrawal';
+      else if (/^038CHCD/i.test(t.reference)) fallback = 'Cash Deposit';
+      else if (/^030PE/i.test(t.reference)) fallback = 'Visa Refund';
+      else if (/^033DBFC|^033DBSC/i.test(t.reference)) fallback = 'International Transfer';
+      else if (/^033DBLC/i.test(t.reference)) fallback = 'Local Fund Transfer';
+
+      // If desc still starts with a reference-like token, use fallback
+      const descClean = desc.replace(/^[0-9A-Z]{8,}\s*/i, '').trim();
+      const finalDesc = descClean.length > 2 ? descClean : (desc.length > 2 ? desc : fallback);
+      return { ...t, description: finalDesc, category: autoCategory(finalDesc, t.credit > 0) };
+    });
+}
+
+
+// ─── Render Table ─────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('txTable');
+  tbody.innerHTML = '';
+
+  let totalDebit = 0, totalCredit = 0;
+
+  transactions.forEach((tx, i) => {
+    totalDebit += tx.debit;
+    totalCredit += tx.credit;
+
+    const tr = document.createElement('tr');
+    if (tx.skip) tr.classList.add('skipped');
+
+    const catOptions = QBO_CATEGORIES.map(c =>
+      `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`
+    ).join('');
+
+    const amount = tx.debit > 0 ? tx.debit : tx.credit;
+    const amtClass = tx.debit > 0 ? 'amount-debit' : 'amount-credit';
+    const sign = tx.debit > 0 ? '−' : '+';
+
+    tr.innerHTML = `
+      <td class="td-skip"><input type="checkbox" ${tx.skip ? 'checked' : ''} onchange="toggleSkip(${i}, this.checked)"></td>
+      <td class="td-date">${tx.date}</td>
+      <td class="td-desc">${tx.description}</td>
+      <td class="td-ref">${tx.reference}</td>
+      <td class="td-amount"><span class="${amtClass}">${sign} ${amount.toFixed(2)}</span></td>
+      <td><span class="pill ${tx.debit > 0 ? 'pill-debit' : 'pill-credit'}" style="font-size:10px;">${tx.debit > 0 ? 'Debit' : 'Credit'}</span></td>
+      <td class="td-cat"><select onchange="updateCategory(${i}, this.value)">${catOptions}</select></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('pillTotal').textContent = `${transactions.length} transactions`;
+  document.getElementById('pillDebit').textContent = `Debits: AED ${totalDebit.toFixed(2)}`;
+  document.getElementById('pillCredit').textContent = `Credits: AED ${totalCredit.toFixed(2)}`;
+}
+
+function toggleSkip(i, checked) {
+  transactions[i].skip = checked;
+  const rows = document.getElementById('txTable').rows;
+  if (checked) rows[i].classList.add('skipped');
+  else rows[i].classList.remove('skipped');
+}
+
+function updateCategory(i, val) {
+  transactions[i].category = val;
+}
+
+function selectAll() {
+  transactions.forEach((t, i) => {
+    t.skip = false;
+    document.getElementById('txTable').rows[i].classList.remove('skipped');
+    document.getElementById('txTable').rows[i].querySelector('input[type=checkbox]').checked = false;
+  });
+}
+
+function deselectAll() {
+  transactions.forEach((t, i) => {
+    t.skip = true;
+    document.getElementById('txTable').rows[i].classList.add('skipped');
+    document.getElementById('txTable').rows[i].querySelector('input[type=checkbox]').checked = true;
+  });
+}
+
+// ─── OAuth ───────────────────────────────────────────────────
+function startOAuth() {
+  const s = settings;
+  if (!s.clientId) { showToast('No Client ID found — go back to settings', 'error'); return; }
+
+  const params = new URLSearchParams({
+    client_id: s.clientId,
+    redirect_uri: 'https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl',
+    response_type: 'code',
+    scope: 'com.intuit.quickbooks.accounting',
+    state: 'baxterimport'
+  });
+
+  document.getElementById('authCodeSection').style.display = 'block';
+  showToast('Opening QuickBooks authorization...', 'info');
+  setTimeout(() => { window.location.href = `https://appcenter.intuit.com/connect/oauth2?${params}`; }, 800);
+}
+
+function submitAuthCode() {
+  const code = document.getElementById('authCodeInput').value.trim();
+  if (!code) { showToast('Please paste the authorization code', 'error'); return; }
+  exchangeToken(code);
+}
+
+async function exchangeToken(code) {
+  const s = settings;
+  try {
+    const resp = await fetch('https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'token',
+        code,
+        clientId: s.clientId,
+        clientSecret: s.clientSecret,
+        redirectUri: 'https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl'
+      })
+    });
+    const data = await resp.json();
+    if (data.access_token) {
+      accessToken = data.access_token;
+      localStorage.setItem('qbo_token', accessToken);
+      localStorage.setItem('qbo_token_expiry', Date.now() + (data.expires_in * 1000));
+      setConnected(true);
+      document.getElementById('accountMappingSection').style.display = 'block';
+      document.getElementById('pushSection').style.display = 'block';
+      document.getElementById('authCodeSection').style.display = 'none';
+      updatePushCount();
+      showToast('Connected to QuickBooks ✓', 'success');
+    } else {
+      showToast('Token exchange failed: ' + (data.error_description || JSON.stringify(data)), 'error');
+    }
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function handleOAuthCallback() {
+  // OAuth callback no longer used — using manual code entry instead
+}
+
+function saveManualToken() {
+  const token = document.getElementById('manualToken').value.trim();
+  if (!token) { showToast('Please paste an access token', 'error'); return; }
+  accessToken = token;
+  localStorage.setItem('qbo_token', token);
+  localStorage.setItem('qbo_token_expiry', Date.now() + (3600 * 1000));
+  setConnected(true);
+  document.getElementById('accountMappingSection').style.display = 'block';
+  document.getElementById('pushSection').style.display = 'block';
+  updatePushCount();
+  showToast('Token saved — ready to push ✓', 'success');
+}
+
+function checkAuth() {
+  const token = localStorage.getItem('qbo_token');
+  const expiry = localStorage.getItem('qbo_token_expiry');
+  if (token && expiry && Date.now() < parseInt(expiry)) {
+    accessToken = token;
+    setConnected(true);
+    document.getElementById('accountMappingSection').style.display = 'block';
+    document.getElementById('pushSection').style.display = 'block';
+    updatePushCount();
+    showToast('Still connected to QuickBooks ✓', 'success');
+  } else {
+    setConnected(false);
+    showToast('Session expired — please reconnect', 'error');
+  }
+}
+
+function setConnected(yes) {
+  document.getElementById('statusDot').className = 'status-dot' + (yes ? ' connected' : '');
+  document.getElementById('statusText').textContent = yes ? 'Connected to QuickBooks' : 'Not connected to QuickBooks';
+  document.getElementById('authDot').className = 'status-dot' + (yes ? ' connected' : '');
+  document.getElementById('authStatusText').textContent = yes ? 'Authorized ✓ Ready to push' : 'Not authorized — click Connect above';
+}
+
+// ─── Account Mapping ─────────────────────────────────────────
+async function loadAccountsForMapping() {
+  if (!accessToken) { showToast('Connect QuickBooks first', 'error'); return; }
+
+  const btn = document.getElementById('loadAccountsBtn');
+  btn.innerHTML = '<span class="spinner"></span> Loading...';
+  btn.disabled = true;
+
+  const VAL_URL = 'https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run';
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+  const endpoint = `${baseUrl}/v3/company/${realmId}/query?query=SELECT%20Id%2CName%2CAccountType%2CAccountSubType%2CFullyQualifiedName%20FROM%20Account%20WHERE%20Active%3Dtrue%20MAXRESULTS%20200&minorversion=65`;
+
+  try {
+    const resp = await fetch(VAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'qbo_get', endpoint, accessToken })
+    });
+    const data = await resp.json();
+
+    if (data.QueryResponse && data.QueryResponse.Account) {
+      qboAccounts = data.QueryResponse.Account;
+      populateMappingDropdowns();
+      document.getElementById('mappingFields').style.display = 'block';
+      showToast(`Loaded ${qboAccounts.length} accounts from QBO ✓`, 'success');
+    } else {
+      showToast('No accounts returned — check your connection', 'error');
+      console.log('QBO response:', data);
+    }
+  } catch (err) {
+    showToast('Failed to load accounts: ' + err.message, 'error');
+  }
+
+  btn.innerHTML = '🔍 Load Accounts from QBO';
+  btn.disabled = false;
+}
+
+function populateMappingDropdowns() {
+  const bankSelect = document.getElementById('mapBankAccount');
+
+  // Filter by account type
+  const bankAccounts = qboAccounts.filter(a => ['Bank', 'Other Current Asset'].includes(a.AccountType));
+  const expenseAccounts = qboAccounts.filter(a => ['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.AccountType));
+  const incomeAccounts = qboAccounts.filter(a => ['Income', 'Other Income'].includes(a.AccountType));
+
+  function buildOptions(accounts, selectedId) {
+    return accounts
+      .sort((a, b) => a.Name.localeCompare(b.Name))
+      .map(a => `<option value="${a.Id}" data-name="${a.Name}" ${a.Id === selectedId ? 'selected' : ''}>${a.Name} (${a.AccountType})</option>`)
+      .join('');
+  }
+
+  const savedBank = accountMapping?.bankId || '';
+  const savedCatMap = accountMapping?.categoryMap || {};
+  const savedIncMap = accountMapping?.incomeMap || {};
+
+  bankSelect.innerHTML = '<option value="">— Select bank account —</option>' + buildOptions(bankAccounts, savedBank);
+
+  // Expense categories
+  const expenseCats = [
+    'Uncategorized',
+    'Bank Charges & Fees',
+    'Bank Fee Refund',
+    'Office & Admin',
+    'Software & Subscriptions',
+    'Travel & Transport',
+    'Meals & Entertainment',
+    'Utilities',
+    'Marketing & Advertising',
+    'Professional Services',
+    'Recruitment / Placement Fees',
+    'Salary & Wages',
+    'Tax Payments',
+    'Transfer',
+    "Owner's Drawings",
+  ];
+  const catGrid = document.getElementById('categoryMappingGrid');
+  catGrid.innerHTML = expenseCats.map(cat => {
+    const savedId = savedCatMap[cat]?.id || '';
+    return `<div class="field">
+      <label>${cat}</label>
+      <select data-cat="${cat}" class="cat-map-select">
+        <option value="">— Select —</option>
+        ${buildOptions(expenseAccounts, savedId)}
+      </select>
+    </div>`;
+  }).join('');
+
+  // Income categories
+  const incomeCats = ['Client Payment', 'Other Income', 'Refund', "Owner's Contributions"];
+  const incGrid = document.getElementById('incomeMappingGrid');
+  incGrid.innerHTML = incomeCats.map(cat => {
+    const savedId = savedIncMap[cat]?.id || '';
+    return `<div class="field">
+      <label>${cat}</label>
+      <select data-cat="${cat}" class="inc-map-select">
+        <option value="">— Select —</option>
+        ${buildOptions(incomeAccounts, savedId)}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function saveAccountMapping() {
+  const bankSelect = document.getElementById('mapBankAccount');
+
+  if (!bankSelect.value) {
+    showToast('Please select a bank account', 'error');
+    return;
+  }
+
+  // Collect expense category mappings
+  const categoryMap = {};
+  document.querySelectorAll('.cat-map-select').forEach(sel => {
+    const cat = sel.dataset.cat;
+    if (sel.value) {
+      categoryMap[cat] = { id: sel.value, name: sel.options[sel.selectedIndex].text };
+    }
+  });
+
+  // Collect income category mappings
+  const incomeMap = {};
+  document.querySelectorAll('.inc-map-select').forEach(sel => {
+    const cat = sel.dataset.cat;
+    if (sel.value) {
+      incomeMap[cat] = { id: sel.value, name: sel.options[sel.selectedIndex].text };
+    }
+  });
+
+  const mappedExpense = Object.keys(categoryMap).length;
+  const mappedIncome = Object.keys(incomeMap).length;
+
+  if (mappedExpense === 0 && mappedIncome === 0) {
+    showToast('Please map at least one expense and one income category', 'error');
+    return;
+  }
+
+  accountMapping = {
+    bankId: bankSelect.value,
+    bankName: bankSelect.options[bankSelect.selectedIndex].text,
+    categoryMap,
+    incomeMap
+  };
+
+  localStorage.setItem('baxterAccountMapping', JSON.stringify(accountMapping));
+  showToast(`Mapping saved — ${mappedExpense} expense + ${mappedIncome} income accounts mapped ✓`, 'success');
+}
+
+// ─── Push to QBO ─────────────────────────────────────────────
+async function queryAccounts() {
+  if (!accessToken) { showToast('Connect QuickBooks first', 'error'); return; }
+  const VAL_URL = 'https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run';
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+  const endpoint = `${baseUrl}/v3/company/${realmId}/query?query=SELECT%20Id%2CName%2CAccountType%2CAccountSubType%20FROM%20Account%20MAXRESULTS%2050&minorversion=65`;
+  try {
+    const resp = await fetch(VAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'qbo_get', endpoint, accessToken })
+    });
+    const data = await resp.json();
+    const box = document.getElementById('accountsList');
+    box.style.display = 'block';
+    if (data.QueryResponse && data.QueryResponse.Account) {
+      const accounts = data.QueryResponse.Account;
+      box.textContent = accounts.map(a => `ID:${a.Id.padEnd(5)} Type:${(a.AccountType||'').padEnd(20)} ${a.Name}`).join('\n');
+    } else {
+      box.textContent = JSON.stringify(data, null, 2);
+    }
+  } catch(err) {
+    showToast('Query failed: ' + err.message, 'error');
+  }
+}
+
+function updatePushCount() {
+  const selected = transactions.filter(t => !t.skip).length;
+  document.getElementById('pushCount').textContent = `${selected} transactions selected`;
+}
+
+async function pushToQBO() {
+  if (!accessToken) { showToast('Not connected — please authorize first', 'error'); return; }
+  if (!accountMapping || !accountMapping.bankId) { showToast('Please set up Account Mapping first — click Load Accounts above', 'error'); return; }
+
+  const toSend = transactions.filter(t => !t.skip);
+  if (!toSend.length) { showToast('No transactions to push', 'error'); return; }
+
+  const btn = document.getElementById('pushBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Pushing...';
+
+  const results = [];
+  pushedTransactions = [];
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+
+  for (const tx of toSend) {
+    try {
+      const payload = buildQBOPayload(tx);
+      const txType = tx.debit > 0 ? 'purchase' : 'deposit';
+      const endpoint = `${baseUrl}/v3/company/${realmId}/${txType}`;
+
+      const resp = await fetch('https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'qbo', endpoint, payload, accessToken })
+      });
+
+      const data = await resp.json();
+      if (resp.ok && !data.Fault) {
+        // Capture the returned ID and SyncToken for potential delete
+        const entity = data.Purchase || data.Deposit;
+        if (entity) {
+          pushedTransactions.push({
+            qboId: entity.Id,
+            syncToken: entity.SyncToken,
+            txType,
+            desc: tx.description,
+            date: tx.date
+          });
+        }
+        results.push({ tx, status: 'ok', msg: `Posted ✓` });
+      } else {
+        const errMsg = data.Fault?.Error?.[0]?.Detail || data.Fault?.Error?.[0]?.Message || JSON.stringify(data);
+        results.push({ tx, status: 'err', msg: errMsg });
+      }
+    } catch (err) {
+      results.push({ tx, status: 'err', msg: err.message });
+    }
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Push Transactions to QuickBooks';
+
+  showResults(results);
+}
+
+function buildQBOPayload(tx) {
+  const isDebit = tx.debit > 0;
+  const amount = isDebit ? tx.debit : tx.credit;
+
+  const bankId = accountMapping.bankId;
+  const bankName = accountMapping.bankName;
+
+  // Look up category-specific account, fall back to first mapped account
+  let accountId, accountName;
+
+  if (isDebit) {
+    const catAccount = accountMapping.categoryMap?.[tx.category];
+    const fallback = accountMapping.categoryMap?.['Uncategorized'] || Object.values(accountMapping.categoryMap || {})[0];
+    accountId = catAccount?.id || fallback?.id;
+    accountName = catAccount?.name || fallback?.name || 'Uncategorized Expense';
+  } else {
+    const catAccount = accountMapping.incomeMap?.[tx.category];
+    const fallback = accountMapping.incomeMap?.['Client Payment'] || accountMapping.incomeMap?.["Owner's Contributions"] || Object.values(accountMapping.incomeMap || {})[0];
+    accountId = catAccount?.id || fallback?.id;
+    accountName = catAccount?.name || fallback?.name || 'Income';
+  }
+
+  if (isDebit) {
+    return {
+      PaymentType: 'Cash',
+      AccountRef: { value: bankId, name: bankName },
+      TxnDate: tx.date,
+      PrivateNote: tx.description,
+      Line: [{
+        Amount: amount,
+        DetailType: 'AccountBasedExpenseLineDetail',
+        AccountBasedExpenseLineDetail: {
+          AccountRef: { value: accountId, name: accountName },
+          BillableStatus: 'NotBillable'
+        },
+        Description: `Ref: ${tx.reference} | Category: ${tx.category}`
+      }]
+    };
+  } else {
+    return {
+      DepositToAccountRef: { value: bankId, name: bankName },
+      TxnDate: tx.date,
+      PrivateNote: tx.description,
+      Line: [{
+        Amount: amount,
+        DetailType: 'DepositLineDetail',
+        DepositLineDetail: {
+          AccountRef: { value: accountId, name: accountName }
+        },
+        Description: `Ref: ${tx.reference} | Category: ${tx.category}`
+      }]
+    };
+  }
+}
+
+// mapCategoryToQBO removed — per-category account mapping used instead
+
+function showResults(results) {
+  document.getElementById('resultsSection').style.display = 'block';
+  const list = document.getElementById('resultsList');
+  list.innerHTML = '';
+
+  const ok = results.filter(r => r.status === 'ok').length;
+  const err = results.filter(r => r.status === 'err').length;
+
+  const summary = document.createElement('div');
+  summary.className = 'result-item result-ok';
+  summary.innerHTML = `✓ ${ok} transactions posted successfully${err ? ` · ${err} failed` : ''}`;
+  list.appendChild(summary);
+
+  results.filter(r => r.status === 'err').forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'result-item result-err';
+    div.innerHTML = `✗ ${r.tx.date} ${r.tx.description.substring(0,40)}... — ${r.msg}`;
+    list.appendChild(div);
+  });
+
+  // Show delete button if transactions were pushed
+  if (pushedTransactions.length > 0) {
+    const deleteDiv = document.createElement('div');
+    deleteDiv.style.marginTop = '16px';
+    deleteDiv.innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="deleteAllPushed()" id="deleteBtn" style="border-color:var(--debit); color:var(--debit);">
+        🗑 Delete All ${pushedTransactions.length} Pushed Transactions from QBO
+      </button>
+      <p style="font-size:11px; color:var(--muted); margin-top:8px;">This will permanently remove the transactions you just pushed. Use this if you need to re-import with different settings.</p>
+    `;
+    list.appendChild(deleteDiv);
+  }
+
+  if (ok > 0) showToast(`${ok} transactions pushed to QuickBooks ✓`, 'success');
+}
+
+async function deleteAllPushed() {
+  if (!accessToken) { showToast('Not connected — please authorize first', 'error'); return; }
+  if (!pushedTransactions.length) { showToast('No pushed transactions to delete', 'error'); return; }
+
+  if (!confirm(`Are you sure you want to delete ${pushedTransactions.length} transactions from QuickBooks? This cannot be undone.`)) return;
+
+  const btn = document.getElementById('deleteBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+
+  let deleted = 0, failed = 0;
+
+  for (const ptx of pushedTransactions) {
+    try {
+      const endpoint = `${baseUrl}/v3/company/${realmId}/${ptx.txType}?operation=delete`;
+      const payload = { Id: ptx.qboId, SyncToken: ptx.syncToken };
+
+      const resp = await fetch('https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'qbo', endpoint, payload, accessToken })
+      });
+
+      const data = await resp.json();
+      if (resp.ok && !data.Fault) {
+        deleted++;
+      } else {
+        failed++;
+        console.log('Delete failed:', ptx.date, ptx.desc, data);
+      }
+    } catch (err) {
+      failed++;
+      console.log('Delete error:', ptx.date, ptx.desc, err.message);
+    }
+  }
+
+  btn.innerHTML = `🗑 Delete All Pushed Transactions from QBO`;
+  btn.disabled = false;
+
+  if (deleted > 0) {
+    pushedTransactions = [];
+    showToast(`${deleted} transactions deleted from QBO${failed ? ` · ${failed} failed` : ''} ✓`, 'success');
+    btn.style.display = 'none';
+  }
+  if (failed > 0 && deleted === 0) {
+    showToast(`Delete failed for ${failed} transactions — token may have expired`, 'error');
+  }
+}
+
+// ─── Bulk Delete from QBO ─────────────────────────────────────
+let foundForDelete = []; // { id, syncToken, type, date, desc }
+
+async function queryForDelete() {
+  if (!accessToken) { showToast('Connect QuickBooks first', 'error'); return; }
+
+  const fromDate = document.getElementById('deleteFromDate').value;
+  const toDate = document.getElementById('deleteToDate').value;
+  if (!fromDate || !toDate) { showToast('Please set both dates', 'error'); return; }
+
+  const VAL_URL = 'https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run';
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+
+  foundForDelete = [];
+  const preview = document.getElementById('deletePreview');
+  preview.style.display = 'block';
+  preview.textContent = 'Querying purchases and deposits...';
+
+  try {
+    // Query purchases
+    const purchaseQuery = encodeURIComponent(`SELECT Id, SyncToken, TxnDate, PrivateNote FROM Purchase WHERE TxnDate >= '${fromDate}' AND TxnDate <= '${toDate}' MAXRESULTS 500`);
+    const pResp = await fetch(VAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'qbo_get', endpoint: `${baseUrl}/v3/company/${realmId}/query?query=${purchaseQuery}&minorversion=65`, accessToken })
+    });
+    const pData = await pResp.json();
+    if (pData.QueryResponse?.Purchase) {
+      pData.QueryResponse.Purchase.forEach(p => {
+        foundForDelete.push({ id: p.Id, syncToken: p.SyncToken, type: 'purchase', date: p.TxnDate, desc: p.PrivateNote || '' });
+      });
+    }
+
+    // Query deposits
+    const depositQuery = encodeURIComponent(`SELECT Id, SyncToken, TxnDate, PrivateNote FROM Deposit WHERE TxnDate >= '${fromDate}' AND TxnDate <= '${toDate}' MAXRESULTS 500`);
+    const dResp = await fetch(VAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'qbo_get', endpoint: `${baseUrl}/v3/company/${realmId}/query?query=${depositQuery}&minorversion=65`, accessToken })
+    });
+    const dData = await dResp.json();
+    if (dData.QueryResponse?.Deposit) {
+      dData.QueryResponse.Deposit.forEach(d => {
+        foundForDelete.push({ id: d.Id, syncToken: d.SyncToken, type: 'deposit', date: d.TxnDate, desc: d.PrivateNote || '' });
+      });
+    }
+
+    if (foundForDelete.length > 0) {
+      preview.textContent = foundForDelete.map(t =>
+        `${t.type.padEnd(9)} ${t.date}  ${t.desc.substring(0, 50)}`
+      ).join('\n');
+      document.getElementById('bulkDeleteBtn').style.display = 'inline-block';
+      document.getElementById('bulkDeleteBtn').textContent = `🗑 Delete All ${foundForDelete.length} Found`;
+      showToast(`Found ${foundForDelete.length} transactions to delete`, 'success');
+    } else {
+      preview.textContent = 'No purchases or deposits found in this date range.';
+      document.getElementById('bulkDeleteBtn').style.display = 'none';
+    }
+  } catch (err) {
+    preview.textContent = 'Query failed: ' + err.message;
+    showToast('Query failed: ' + err.message, 'error');
+  }
+}
+
+async function bulkDeleteFromQBO() {
+  if (!foundForDelete.length) return;
+  if (!confirm(`Are you sure you want to delete ${foundForDelete.length} transactions from QuickBooks? This cannot be undone.`)) return;
+
+  const btn = document.getElementById('bulkDeleteBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+  const baseUrl = settings.env === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+
+  let deleted = 0, failed = 0;
+
+  for (const tx of foundForDelete) {
+    try {
+      const endpoint = `${baseUrl}/v3/company/${realmId}/${tx.type}?operation=delete`;
+      const payload = { Id: tx.id, SyncToken: tx.syncToken };
+
+      const resp = await fetch('https://ben20miller--9557d060377611f1877742b51c65c3df.web.val.run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'qbo', endpoint, payload, accessToken })
+      });
+
+      const data = await resp.json();
+      if (resp.ok && !data.Fault) {
+        deleted++;
+      } else {
+        failed++;
+        console.log('Bulk delete failed:', tx, data);
+      }
+    } catch (err) {
+      failed++;
+    }
+
+    // Update button with progress
+    btn.innerHTML = `<span class="spinner"></span> Deleted ${deleted}/${foundForDelete.length}...`;
+  }
+
+  btn.disabled = false;
+
+  if (deleted > 0) {
+    foundForDelete = [];
+    document.getElementById('deletePreview').textContent = `✓ ${deleted} transactions deleted${failed ? ` · ${failed} failed` : ''}`;
+    btn.style.display = 'none';
+    showToast(`${deleted} transactions deleted from QBO ✓`, 'success');
+  } else {
+    btn.innerHTML = `🗑 Delete All Found`;
+    showToast(`Delete failed — token may have expired`, 'error');
+  }
+}
+
+function resetTool() {
+  transactions = [];
+  pushedTransactions = [];
+  document.getElementById('txTable').innerHTML = '';
+  document.getElementById('tableSection').style.display = 'none';
+  document.getElementById('dropTitle').textContent = 'Drop PDF here or click to select';
+  document.getElementById('dropSub').textContent = 'Mashreq Bank statement (.pdf)';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('pushSection').style.display = 'none';
+  setStep(2);
+}
+
+// ─── Utilities ───────────────────────────────────────────────
+function showProgress(show) {
+  document.getElementById('progressBar').classList.toggle('show', show);
+}
+
+function setProgress(pct) {
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ─── Init ────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  loadSettings();
+  handleOAuthCallback();
+
+  // Check existing token
+  const token = localStorage.getItem('qbo_token');
+  const expiry = localStorage.getItem('qbo_token_expiry');
+  if (token && expiry && Date.now() < parseInt(expiry)) {
+    accessToken = token;
+    setConnected(true);
+  }
+});
+</script>
+</body>
+</html>
