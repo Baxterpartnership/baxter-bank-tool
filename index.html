@@ -1444,8 +1444,8 @@ function populateMappingDropdowns() {
 
   // Filter by account type
   const bankAccounts = qboAccounts.filter(a => ['Bank', 'Other Current Asset'].includes(a.AccountType));
-  const expenseAccounts = qboAccounts.filter(a => ['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.AccountType));
-  const incomeAccounts = qboAccounts.filter(a => ['Income', 'Other Income'].includes(a.AccountType));
+  const expenseAccounts = qboAccounts.filter(a => ['Expense', 'Other Expense', 'Cost of Goods Sold', 'Equity'].includes(a.AccountType));
+  const incomeAccounts = qboAccounts.filter(a => ['Income', 'Other Income', 'Equity'].includes(a.AccountType));
 
   function buildOptions(accounts, selectedId) {
     return accounts
