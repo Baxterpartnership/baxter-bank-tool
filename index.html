@@ -1014,7 +1014,9 @@ function extractTransactions(allItems) {
   // ── Step 1: Group items into lines by (page, Y) ──────────────
   const lineMap = {};
   for (const item of allItems) {
-    const key = `${item.page}_${Math.round(item.y / 4) * 4}`;
+    // Use 8px tolerance to group items on the same visual row
+    // This handles Mashreq's slight vertical offset between date and description
+    const key = `${item.page}_${Math.round(item.y / 8) * 8}`;
     if (!lineMap[key]) lineMap[key] = [];
     lineMap[key].push(item);
   }
