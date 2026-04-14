@@ -808,6 +808,8 @@ const CATEGORY_RULES = [
   { pattern: /internal transfer|self transfer|own account transfer/i, cat: 'Transfer' },
   // General refunds
   { pattern: /refund/i, cat: 'Refund' },
+  // Visa purchases to FTA/Federal Tax Authority = Tax Payments (must be before generic visa purchase rule)
+  { pattern: /federal tax|federal tax authority|fta.*dubai|082012/i, cat: 'Tax Payments' },
   // Visa purchases — personal spend on business card = Owner's Drawings
   { pattern: /visa purchase/i, cat: "Owner's Drawings" },
 ];
@@ -1201,7 +1203,7 @@ function extractTransactions(allItems) {
   if (current && (current.debit > 0 || current.credit > 0)) txs.push(current);
 
   // Clean up bleed-through from next transaction line or reference numbers in description
-  const bleedRe = /\s*(Visa Purchase\s*-\s*\d+.*|IPP TRANSFER\s*-\s*IPP.*|ATM Cash Withdrawal.*|Inward Remittance.*|Online.*Transfer.*|Funds Transfer.*)$/i;
+  const bleedRe = /\s*(IPP TRANSFER\s*-\s*IPP.*|ATM Cash Withdrawal.*|Inward Remittance.*|Funds Transfer.*)$/i;
   // Remove 099REFEAED reference numbers that bleed into descriptions
   const refBleedRe = /\s*099REFEAED\s*\d+\s*/gi;
 
