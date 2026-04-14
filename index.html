@@ -1012,16 +1012,25 @@ async function parsePDF(arrayBuffer, password) {
 
 function extractTransactions(allItems) {
   // ── Step 1: Group items into lines by (page, Y) ──────────────
-  const lineMap = {};
-  for (const item of allItems) {
-    // Use 8px tolerance to group items on the same visual row
-    // This handles Mashreq's slight vertical offset between date and description
-    const key = `${item.page}_${Math.round(item.y / 8) * 8}`;
-    if (!lineMap[key]) lineMap[key] = [];
-    lineMap[key].push(item);
+  // Group items into lines using a proximity-based approach
+  // Sort all items by page then Y position first
+  const sortedItems = [...allItems].sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    return a.y - b.y;
+  });
+
+  // Merge items within 12px vertically on the same page into the same line
+  const lineGroups = [];
+  for (const item of sortedItems) {
+    const lastGroup = lineGroups[lineGroups.length - 1];
+    if (lastGroup && lastGroup[0].page === item.page && Math.abs(item.y - lastGroup[0].y) <= 12) {
+      lastGroup.push(item);
+    } else {
+      lineGroups.push([item]);
+    }
   }
 
-  const lines = Object.values(lineMap)
+  const lines = lineGroups
     .map(items => items.sort((a, b) => a.x - b.x))
     .sort((a, b) => {
       if (a[0].page !== b[0].page) return a[0].page - b[0].page;
