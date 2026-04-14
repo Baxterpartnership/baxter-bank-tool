@@ -799,7 +799,11 @@ const CATEGORY_RULES = [
   { pattern: /trade license|business license|amer|tasheel|notary|typing|printing|stationery|courier|fedex|dhl|aramex/i, cat: 'Office & Admin' },
   // Amazon shopping maps to office by default
   { pattern: /amazon(?!.*web)|amzn/i, cat: 'Office & Admin' },
-  // Transfers — only internal/own-account moves, not outward payments
+  // Owner's drawings — local fund transfers out to personal account
+  { pattern: /online local fund transfer|local fund transfer/i, cat: "Owner's Drawings" },
+  // International transfers — outward payments abroad
+  { pattern: /online international money transfer|international money transfer|international transfer/i, cat: "Owner's Drawings" },
+  // Transfers — only generic transfer labels
   { pattern: /^transfer\s*-?\s*$/i, cat: 'Transfer' },
   { pattern: /internal transfer|self transfer|own account transfer/i, cat: 'Transfer' },
   // General refunds
