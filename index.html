@@ -1072,6 +1072,7 @@ function extractTransactions(allItems) {
   let current = null;
   let lastTxY = -1;
   let lastTxPage = -1;
+  let pendingDesc = ''; // captures description line that appears above its date line
 
   for (const line of lines) {
     const texts = line.map(i => i.text);
@@ -1090,6 +1091,21 @@ function extractTransactions(allItems) {
     if (joined.toLowerCase().includes('date') && joined.toLowerCase().includes('debit') && joined.toLowerCase().includes('balance')) continue;
 
     const isNewTx = dateRe.test(firstItem.text);
+
+    // Capture description-only lines that Mashreq renders above the date line
+    if (!isNewTx && !current) {
+      const descTokens = line.filter(i =>
+        i.x >= colBounds.desc - 15 && i.x <= colBounds.ref + tol &&
+        i.text.trim().length > 2 &&
+        !numRe.test(i.text.replace(/,/g,'')) &&
+        !/^0\d{9,11}$/.test(i.text.trim()) &&
+        !skipRe.test(i.text)
+      ).map(i => i.text.trim());
+      const hasAmt = line.some(i => numRe.test(i.text.replace(/,/g,'')) && i.x > colBounds.ref + 10);
+      if (descTokens.length > 0 && !hasAmt) {
+        pendingDesc = descTokens.join(' ');
+      }
+    }
 
     if (isNewTx) {
       if (current && (current.debit > 0 || current.credit > 0)) {
@@ -1117,6 +1133,13 @@ function extractTransactions(allItems) {
           desc += (desc ? ' ' : '') + t;
         }
       }
+
+      // If no description found on the date line, check the line immediately before
+      // Mashreq sometimes renders description ABOVE the date/amount line
+      if (!desc && pendingDesc) {
+        desc = pendingDesc;
+      }
+      pendingDesc = '';
 
       current = { date: firstItem.text, description: desc.trim(), reference: ref, debit, credit, skip: false, category: '' };
       lastTxY = lineY;
