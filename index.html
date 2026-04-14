@@ -770,8 +770,8 @@ const QBO_CATEGORIES = [
 
 // Auto-categorisation rules — order matters, first match wins
 const CATEGORY_RULES = [
-  // Bank fee refunds (credits from Mashreq) — must be before general VAT/refund rules
-  { pattern: /vat refund|fee refund|charge refund|refund.*fee|refund.*charge|reversal.*fee|fee.*reversal|bank.*refund/i, cat: 'Bank Fee Refund', creditOnly: true },
+  // Bank fee refunds and VAT reversals (credits from Mashreq)
+  { pattern: /vat.*reversal|reversal.*vat|vat refund|fee refund|charge refund|refund.*fee|refund.*charge|reversal.*fee|fee.*reversal|bank.*refund|sme remittance.*rever|fbf fee.*rever/i, cat: 'Bank Fee Refund', creditOnly: true },
   // Client payments / inward remittances
   { pattern: /inward remittance|ipi payment|ipp transfer|incoming transfer|swift.*credit|telegraphic transfer/i, cat: 'Client Payment' },
   // Owner contributions (personal to business)
@@ -1044,6 +1044,8 @@ function extractTransactions(allItems) {
 
   // Strict boilerplate — skip these lines entirely
   const skipRe = /opening balance|closing balance|dear customer|it is the policy|account statement|statement for period|branch\s*:|^account number|^account currency|^iban|^customer number|^account type|the items and balance|report any discrepancies|all charges, terms|please note that|mashreqbank psc|regulated by the central|page \d+ of \d+|privacy policy|submit cancel|الرجاء التأكد|وفي حال اكتشاف|تاريخ طباعة|جميع الرسوم|يرجى ملاحظة/i;
+  // Account number suffix that Mashreq appends to some descriptions (e.g. '- 019100951098')
+  const acctSuffixRe = /\s*[-–]\s*0\d{8,12}\s*$/;
 
   const txs = [];
   let current = null;
@@ -1059,6 +1061,8 @@ function extractTransactions(allItems) {
 
     // Skip boilerplate and column headers
     if (skipRe.test(joined)) continue;
+    // Skip lines that are just the account number appended by Mashreq to descriptions
+    if (/^0\d{9,11}$/.test(joined.trim())) continue;
     if (/^(date|transaction|reference number|debit|credit|balance|التاريخ|المعاملة)$/i.test(joined.trim())) continue;
     if (joined.toLowerCase().includes('date') && joined.toLowerCase().includes('debit') && joined.toLowerCase().includes('balance')) continue;
 
@@ -1138,14 +1142,19 @@ function extractTransactions(allItems) {
     .filter(t => (t.debit > 0 || t.credit > 0))
     .map(t => {
       let desc = t.description.replace(/\s+/g, ' ').replace(/[\s\-]+$/, '').trim();
+      // Remove account number suffix (e.g. '- 019100951098' appended by Mashreq)
+      desc = desc.replace(acctSuffixRe, '').trim();
       // Remove reference number bleed (099REFEAED pattern)
       desc = desc.replace(refBleedRe, ' ').trim();
       desc = desc.replace(bleedRe, '').trim();
+      // Remove trailing dash left after cleanup
+      desc = desc.replace(/\s*-\s*$/, '').trim();
 
       let fallback = t.reference || 'Transaction';
       if (/^033IPPC|^033ICLB|^033IPI/i.test(t.reference)) fallback = 'IPP Transfer';
       else if (/^033IPPD/i.test(t.reference)) fallback = 'IPP Transfer (Outward)';
-      else if (/^033DBLC|^033OIP/i.test(t.reference)) fallback = 'Local Fund Transfer';
+      else if (/^033DBLC/i.test(t.reference)) fallback = 'Online Local Fund Transfer';
+      else if (/^033OIP/i.test(t.reference)) fallback = 'Outward International Payment';
       else if (/^030POSB/i.test(t.reference)) fallback = 'Visa Purchase';
       else if (/^099REFEAED/i.test(t.reference)) fallback = 'Bank Fee';
       else if (/^006ATMF/i.test(t.reference)) fallback = 'ATM Withdrawal';
