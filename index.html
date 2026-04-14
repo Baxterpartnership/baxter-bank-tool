@@ -988,9 +988,9 @@ async function parsePDF(arrayBuffer, password) {
   }
 
   setProgress(85);
-  // Debug: log ALL items from page 1
-  console.log('=== RAW ITEMS PAGE 1 ===');
-  allItems.filter(i => i.page === 1).forEach(i => {
+  // Debug: log ALL items from page 1 with NO filtering
+  console.log('=== ALL RAW ITEMS PAGE 1 ===');
+  allItems.filter(i => i.page === 1 && i.y > 340 && i.y < 560).forEach(i => {
     console.log(`x=${i.x} y=${i.y} | ${JSON.stringify(i.text)}`);
   });
   transactions = extractTransactions(allItems);
@@ -1073,7 +1073,9 @@ function extractTransactions(allItems) {
     if (skipRe.test(joined)) continue;
     // Skip lines that are just the account number appended by Mashreq to descriptions
     if (/^0\d{9,11}$/.test(joined.trim())) continue;
-    if (/^(date|transaction|reference number|debit|credit|balance|التاريخ|المعاملة)$/i.test(joined.trim())) continue;
+    if (/^(date|transaction|reference number|reference|debit|credit|balance|التاريخ|المعاملة|المعاملة التاريخ)$/i.test(joined.trim())) continue;
+    // Skip lines that are just the column header repeated mid-page
+    if (/^transaction$/i.test(joined.trim()) && !joined.includes('|')) continue;
     if (joined.toLowerCase().includes('date') && joined.toLowerCase().includes('debit') && joined.toLowerCase().includes('balance')) continue;
 
     const isNewTx = dateRe.test(firstItem.text);
