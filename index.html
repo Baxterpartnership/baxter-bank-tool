@@ -988,10 +988,10 @@ async function parsePDF(arrayBuffer, password) {
   }
 
   setProgress(85);
-  // Debug: log raw allItems around the first few transactions
-  console.log('=== RAW ITEMS (first 80) ===');
-  allItems.slice(0,80).forEach(i => {
-    console.log(`p${i.page} x=${i.x} y=${i.y} | ${i.text}`);
+  // Debug: log ALL items from page 1
+  console.log('=== RAW ITEMS PAGE 1 ===');
+  allItems.filter(i => i.page === 1).forEach(i => {
+    console.log(`x=${i.x} y=${i.y} | ${JSON.stringify(i.text)}`);
   });
   transactions = extractTransactions(allItems);
   // Debug: log first 10 transactions raw
@@ -1190,9 +1190,8 @@ function extractTransactions(allItems) {
       else if (/^033DBFC|^033DBSC/i.test(t.reference)) fallback = 'International Transfer';
       else if (/^033DBLC/i.test(t.reference)) fallback = 'Local Fund Transfer';
 
-      // If desc still starts with a reference-like token, use fallback
-      const descClean = desc.replace(/^[0-9A-Z]{8,}\s*/i, '').trim();
-      const finalDesc = descClean.length > 2 ? descClean : (desc.length > 2 ? desc : fallback);
+      // Only use fallback if description is empty or just whitespace
+      const finalDesc = desc.length > 2 ? desc : fallback;
       return { ...t, description: finalDesc, category: autoCategory(finalDesc, t.credit > 0) };
     });
 }
