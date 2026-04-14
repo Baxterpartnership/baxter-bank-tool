@@ -777,16 +777,22 @@ const CATEGORY_RULES = [
   // Owner contributions (personal to business)
   { pattern: /own.*transfer|personal.*transfer|self.*transfer|owner.*deposit/i, cat: "Owner's Contributions" },
   // Bank charges and fees
-  { pattern: /maintenance fee|monthly fee|relationship fee|service charge|bank fee|account fee|sms alert|card fee|annual fee|fbf fee|sme fee/i, cat: 'Bank Charges & Fees' },
+  { pattern: /maintenance fee|monthly fee|relationship fee|service charge|bank fee|account fee|sms alert|card fee|annual fee|fbf fee|sme fee|funds transfer charges|corr\.bank\.charges|atm usage fee|atm usage fees|trade license/i, cat: 'Bank Charges & Fees' },
   { pattern: /atm withdrawal|cash withdrawal/i, cat: "Owner's Drawings" },
   // VAT and tax payments
   { pattern: /value added tax.*output|vat.*output|federal tax authority|fta payment|vat payment/i, cat: 'Tax Payments' },
-  // Salary
-  { pattern: /salary|payroll|wages|bomlaead/i, cat: 'Salary & Wages' },
+  // Salary — IPP transfers with BOMLAEAD reference are salary payments
+  { pattern: /salary|payroll|wages|bomlaead|ref.*salary|ref\/salary/i, cat: 'Salary & Wages' },
+  // Cash deposits into business account = Owner's Contributions
+  { pattern: /atm.*cash deposit|ccdm cash deposit|cash deposit/i, cat: "Owner's Contributions" },
+  // Outward clearing cheques = Owner's Drawings
+  { pattern: /outward clearing cheque/i, cat: "Owner's Drawings" },
+  // Funds transfer TC Issue = incoming client payment
+  { pattern: /funds transfer.*tc issue|tc issue/i, cat: 'Client Payment' },
   // Travel and transport — exclude food delivery variants
-  { pattern: /uber(?! eats)|careem(?! food)|taxi|rta |salik|parking|airline|emirates air|flydubai|air arabia/i, cat: 'Travel & Transport' },
+  { pattern: /uber(?!.*eats)|careem(?!.*food)|lyft|taxi|rta |salik|parking|airline|emirates air|flydubai|air arabia|expedia|airbnb|el sitio hotel|palais apartments|ysi.*le palais|hotel/i, cat: 'Travel & Transport' },
   // Meals and entertainment
-  { pattern: /uber eats|careem food|deliveroo|talabat|zomato|restaurant|bistro|cafe|coffee|starbucks|costa|dining|catering/i, cat: 'Meals & Entertainment' },
+  { pattern: /uber.*eats|careem.*food|deliveroo|talabat|zomato|restaurant|bistro|cafe|coffee|starbucks|costa|dining|catering|miya bistro/i, cat: 'Meals & Entertainment' },
   // Software and subscriptions
   { pattern: /netflix|spotify|linkedin|microsoft|google.*pay|apple\.com|adobe|zoom|dropbox|slack|github|aws|amazon web|godaddy|namecheap/i, cat: 'Software & Subscriptions' },
   // Utilities
@@ -1175,8 +1181,15 @@ function extractTransactions(allItems) {
       // it's a new transaction row without a date — push current and skip
       if (current._complete && hasAmt) continue;
 
-      // Only append description text if within tight Y gap (same visual row)
-      if (current._complete && yGap > 20) continue;
+      // For Visa Purchase rows, allow description continuation across multiple lines
+      // since merchant name appears on lines below the amount
+      const isVisaPurchase = /visa purchase|atm cash withdrawal/i.test(current.description);
+
+      // For non-Visa transactions, only append if within tight Y gap
+      if (current._complete && !isVisaPurchase && yGap > 20) continue;
+
+      // For Visa Purchase, allow up to 4 continuation lines but stop if Y gap is huge
+      if (current._complete && isVisaPurchase && yGap > 80) continue;
 
       for (const item of line) {
         const t = item.text.trim();
@@ -1194,8 +1207,8 @@ function extractTransactions(allItems) {
           if (dDist < cDist && dDist < tol && current.debit === 0) { current.debit = val; current._complete = true; }
           else if (cDist <= dDist && cDist < tol && current.credit === 0) { current.credit = val; current._complete = true; }
         } else if (x >= colBounds.desc - 15 && x <= colBounds.ref + tol && !/^\d{12}$/.test(t)) {
-          if (!current._complete) current.description += ' ' + t;
-        }
+          const isVisaPurchase = /visa purchase|atm cash withdrawal/i.test(current.description);
+          if (!current._complete || isVisaPurchase) current.description += ' ' + t;    }
       }
     }
   }
